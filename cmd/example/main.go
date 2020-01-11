@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,11 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	workers "github.com/digitalocean/go-workers2"
 	"github.com/gorilla/mux"
+)
+
+var (
+	servicePort = flag.Int("service", 3000, "service http port")
+	statusPort  = flag.Int("status", 3001, "status http port")
 )
 
 type queue struct {
@@ -35,21 +41,29 @@ func (q *queue) dequeue(key string) (string, bool) {
 	return "", false
 }
 
-func enqueue(q *workers.Producer) http.HandlerFunc {
+func enqueue(p *workers.Producer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.FormValue("key")
 		if key == "" {
-			http.Error(w, "no message", http.StatusBadRequest)
+			http.Error(w, "no key", http.StatusBadRequest)
 			return
 		}
-		res, err := q.Enqueue("helloQueue", "Add", key)
+		// The "Add" value for a parameter named "class" feels a little strange to me.
+		// Changing it to an arbitrary value seems to work just as well. My suspicion
+		// is that it relates to the ruby Sidekiq implementation needing the name of
+		// the worker class that it should invoke when the enqueued message gets picked
+		// up for processing. I guess we have it available in case we are mixing it up
+		// with ruby's Sidekiq workers and want them to be able to pick up any jobs
+		// that we enqueue from a go producer.
+		// See: https://github.com/mperham/sidekiq/wiki/The-Basics#client
+		jobID, err := p.Enqueue("helloQueue", "Add", key)
 		if err != nil {
 			log.Println("enqueue failed with", err)
 			http.Error(w, "enqueue failed", http.StatusInternalServerError)
 			return
 		}
-		log.Println("enqueue response:", res)
-		http.Error(w, "accepted", http.StatusAccepted)
+		res := fmt.Sprintf("accepted job %s", jobID)
+		http.Error(w, res, http.StatusAccepted)
 	}
 }
 
@@ -57,7 +71,7 @@ func dequeue(q *queue) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Query().Get("key")
 		if key == "" {
-			http.Error(w, "no message", http.StatusBadRequest)
+			http.Error(w, "no key", http.StatusBadRequest)
 			return
 		}
 		if value, ok := q.dequeue(key); ok {
@@ -73,7 +87,7 @@ func workerJob(q *queue) workers.JobFunc {
 		log.Println("processing message", message.Jid())
 		key, err := message.Args().String()
 		if err != nil {
-			log.Println("cannot get args:", err)
+			log.Println("cannot get args from message:", err)
 			return nil
 		}
 		q.enqueue(key, fmt.Sprintf("hello from job %s", message.Jid()))
@@ -82,6 +96,7 @@ func workerJob(q *queue) workers.JobFunc {
 }
 
 func main() {
+	flag.Parse()
 	if err := realMain(); err != nil {
 		log.Fatalln("application failed:", err)
 	}
@@ -95,7 +110,7 @@ func realMain() error {
 
 	mr, err := miniredis.Run()
 	if err != nil {
-		return fmt.Errorf("failed to start redis: %w", err)
+		return fmt.Errorf("failed to start miniredis: %w", err)
 	}
 	defer mr.Close()
 
@@ -105,7 +120,7 @@ func realMain() error {
 		ServerAddr: mr.Addr(),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create manager: %w", err)
+		return fmt.Errorf("failed to create worker manager: %w", err)
 	}
 	manager.AddWorker("helloQueue", 2, workerJob(q))
 	p := manager.Producer()
@@ -113,15 +128,28 @@ func realMain() error {
 	r := mux.NewRouter()
 	r.HandleFunc("/enqueue", enqueue(p)).Methods("POST")
 	r.HandleFunc("/dequeue", dequeue(q)).Methods("GET")
-	s := &http.Server{Addr: ":3000", Handler: r}
+	s := &http.Server{Addr: fmt.Sprintf(":%d", *servicePort), Handler: r}
 
 	shutdown := func() {
-		cancelFunc()
+		cancelFunc() // stop waiting for exit
 		s.Shutdown(context.Background())
 	}
+	go func() {
+		// there is no nice way of shutting this one down,
+		// but since its only for stats ¯\_(ツ)_/¯
+		workers.StartStatsServer(*statusPort)
+	}()
 	waitForExit(shutdown,
-		func() error { return s.ListenAndServe() },
-		func() error { manager.Run(); return fmt.Errorf("manager stopped") },
+		func() error {
+			log.Println("starting application on port", *servicePort)
+			return s.ListenAndServe()
+		},
+		func() error {
+			log.Println("starting workers")
+			manager.Run() // blocks waiting for exit signal
+			log.Println("workers stopped")
+			return nil
+		},
 		waitForSignalAction(ctx),
 	)
 	return nil
