@@ -2,7 +2,7 @@
 
 Playing around with using an in-process redis using [miniredis](https://github.com/alicebob/miniredis) as the backing store for a service that relies on [go-workers2](https://github.com/digitalocean/go-workers2) for background processing.
 
-While miniredis was created as something to be only used in unit tests, this may be useful in running a service that normally requires a redis in a totally standalone mode. I view such a standalone mode as critical for good development experience in creating integrations against a service, since you can run the service locally without any of its downstream dependencies and expect to have it respond sensibly.
+While miniredis was created as something to be only used in unit tests, this may be useful in running a service that normally requires a redis in a totally standalone mode. I view such a standalone mode as critical for a good development experience in creating integrations against a service, since you can run the service locally without any of its downstream dependencies and expect to have it respond sensibly.
 
 This is inspired by the `-dev` mode of [HashiCorp's Vault](https://www.vaultproject.io/docs/commands/server.html#dev-options). Being asked to run a universe of dependencies locally via docker-compose (imagine needing to integrate against serveral services and their docker-compose setups ... holy crap) or only being able to talk to a running instance, either a test instance or in a non-production environment, is antithetical to a good local development experience.
 
