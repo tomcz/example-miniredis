@@ -1,7 +1,6 @@
-.PHONY: run clean compile
+.PHONY: all clean format lint compile run
 
-run: clean compile
-	./target/example
+all: clean format lint compile
 
 target:
 	mkdir target
@@ -9,5 +8,15 @@ target:
 clean:
 	rm -rf target
 
+format:
+	goimports -w -local github.com/tomcz/example-miniredis .
+
+lint:
+	go vet ./...
+	golint -set_exit_status ./...
+
 compile: target
 	go build -o target/example ./cmd/example/...
+
+run: compile
+	./target/example
