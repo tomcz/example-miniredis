@@ -46,14 +46,6 @@ func enqueue(p *workers.Producer) http.HandlerFunc {
 			http.Error(w, "no key", http.StatusBadRequest)
 			return
 		}
-		// The "Add" value for a parameter named "class" feels a little strange to me.
-		// Changing it to an arbitrary value seems to work just as well. My suspicion
-		// is that it relates to the ruby Sidekiq implementation needing the name of
-		// the worker class that it should invoke when the enqueued message gets picked
-		// up for processing. I guess we have it available in case we are mixing it up
-		// with ruby's Sidekiq workers and want them to be able to pick up any jobs
-		// that we enqueue from a go producer.
-		// See: https://github.com/mperham/sidekiq/wiki/The-Basics#client
 		jobID, err := p.Enqueue("helloQueue", "Add", key)
 		if err != nil {
 			log.Println("enqueue failed with", err)
@@ -123,23 +115,6 @@ func realMain() error {
 	}
 	defer mr.Close()
 
-	// ProcessID uniquely identifies this instance.
-	// In an implementation that uses a real redis instance,
-	// and in a multi-node environment like k8s where these
-	// things can go up & down, how do we set that up???
-	// Maybe we can't and therefore lose all the in-process
-	// jobs and need something that will eventually re-queue
-	// any jobs that have not completed. That means that we may
-	// need to keep track of the progress of the jobs ourselves,
-	// for example with checkpoints or status codes in a database.
-	// We can also decide that we will not be running more than
-	// one worker node at a time, and then we don't need to worry
-	// about the process ID. We may still need to ensure that
-	// there is really only one node, for example when an old
-	// one is being shut down, the new one should not be trying
-	// to process anything. This could be done with leadership
-	// election or a lock, and that is something we can also use
-	// redis for. For example: https://redis.io/topics/distlock
 	manager, err := workers.NewManager(workers.Options{
 		ProcessID:  "1",
 		Namespace:  "example",
