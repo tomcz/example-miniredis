@@ -4,7 +4,7 @@ Playing around with using an in-process redis using [miniredis](https://github.c
 
 While miniredis was created as something to be only used in unit tests, this may be useful in running a service that normally requires a redis in a totally standalone mode. I view such a standalone mode as critical for a good development experience in creating integrations against a service, since you can run the service locally without any of its downstream dependencies and still expect to have it respond sensibly.
 
-This standalone mode is inspired by the `-dev` option of [HashiCorp's Vault](https://www.vaultproject.io/docs/commands/server.html#dev-options). Being asked to run a universe of dependencies locally via docker-compose (imagine needing to integrate against serveral services and their docker-compose setups ... holy crap) or only being able to talk to a running instance, either a test instance or in a non-production environment, is antithetical to a good local development experience.
+This standalone mode is inspired by the `-dev` option of [HashiCorp's Vault](https://www.vaultproject.io/docs/commands/server.html#dev-options). Being asked to run a universe of dependencies locally via docker-compose (imagine needing to integrate against serveral services and their docker-compose setups ... holy crap) or only being able to talk to a running instance, either a test instance in production or an instance in a non-production environment, is antithetical to a good local development experience.
 
 ## Notes
 
