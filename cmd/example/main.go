@@ -149,7 +149,7 @@ func realMain() error {
 	s := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: r}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	waitForExit(ctx,
+	runAndWaitForExit(ctx,
 		func() {
 			cancel() // stop waiting for exit
 			s.Shutdown(context.Background())
