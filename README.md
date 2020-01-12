@@ -6,7 +6,7 @@ While miniredis was created as something to be only used in unit tests, this may
 
 ## Notes
 
-1. [main.go#49](https://github.com/tomcz/example-miniredis/blob/master/cmd/example/main.go#L49): The `Add` value for a parameter named `class` feels a little strange to me. Changing it to an arbitrary value seems to work just as well. My suspicion is that it relates to the ruby [Sidekiq](https://github.com/mperham/sidekiq/wiki/The-Basics#client) implementation needing the name of the worker class that it should invoke when the enqueued message gets picked up for processing. I guess we have it available in case we are mixing it up with ruby's Sidekiq workers and want them to be able to pick up any jobs that we enqueue from a go producer.
+1. [main.go#49](https://github.com/tomcz/example-miniredis/blob/master/cmd/example/main.go#L49): The `Add` value for a parameter named `class` feels a little strange to me. Changing it to an arbitrary value seems to work just as well. My suspicion is that it relates to the [Sidekiq](https://github.com/mperham/sidekiq/wiki/The-Basics#client) ruby implementation needing the name of the worker class that it should invoke when the enqueued message gets picked up for processing. I guess we have it available in case we are mixing it up with Sidekiq's ruby workers and want them to be able to pick up any jobs that we enqueue from a go producer.
 
 2. [main.go#119](https://github.com/tomcz/example-miniredis/blob/master/cmd/example/main.go#L119): `ProcessID` is supposed to uniquely identify this instance. In an implementation that uses a real redis, and in a multi-node environment like k8s where these things can go up & down, how do we set that up?
 
