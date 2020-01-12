@@ -132,6 +132,14 @@ func realMain() error {
 	// any jobs that have not completed. That means that we may
 	// need to keep track of the progress of the jobs ourselves,
 	// for example with checkpoints or status codes in a database.
+	// We can also decide that we will not be running more than
+	// one worker node at a time, and then we don't need to worry
+	// about the process ID. We may still need to ensure that
+	// there is really only one node, for example when an old
+	// one is being shut down, the new one should not be trying
+	// to process anything. This could be done with leadership
+	// election or a lock, and that is something we can also use
+	// redis for. For example: https://redis.io/topics/distlock
 	manager, err := workers.NewManager(workers.Options{
 		ProcessID:  "1",
 		Namespace:  "example",
