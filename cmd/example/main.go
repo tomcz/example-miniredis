@@ -115,8 +115,6 @@ func main() {
 }
 
 func realMain() error {
-	ctx, cancelFunc := context.WithCancel(context.Background())
-
 	q := &queue{data: make(map[string]string)}
 
 	mr, err := miniredis.Run()
@@ -150,11 +148,12 @@ func realMain() error {
 	r.HandleFunc("/stats", stats(manager)).Methods("GET")
 	s := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: r}
 
-	shutdown := func() {
-		cancelFunc() // stop waiting for exit
-		s.Shutdown(context.Background())
-	}
-	waitForExit(shutdown,
+	ctx, cancel := context.WithCancel(context.Background())
+	waitForExit(ctx,
+		func() {
+			cancel() // stop waiting for exit
+			s.Shutdown(context.Background())
+		},
 		func() error {
 			log.Println("starting application on port", *port)
 			return s.ListenAndServe()
@@ -165,7 +164,6 @@ func realMain() error {
 			log.Println("workers stopped")
 			return nil
 		},
-		waitForSignalAction(ctx),
 	)
 	return nil
 }
