@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -13,10 +14,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-var (
-	servicePort = flag.Int("service", 3000, "service http port")
-	statusPort  = flag.Int("status", 3001, "status http port")
-)
+var port = flag.Int("service", 3000, "service http port")
 
 type queue struct {
 	sync.Mutex
@@ -82,6 +80,19 @@ func dequeue(q *queue) http.HandlerFunc {
 	}
 }
 
+func stats(m *workers.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		stats, err := m.GetStats()
+		if err != nil {
+			log.Println("failed to get stats from manager:", err)
+			http.Error(w, "worker stats unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		json.NewEncoder(w).Encode(stats)
+	}
+}
+
 func workerJob(q *queue) workers.JobFunc {
 	return func(message *workers.Msg) error {
 		log.Println("processing message", message.Jid())
@@ -136,20 +147,16 @@ func realMain() error {
 	r := mux.NewRouter()
 	r.HandleFunc("/enqueue", enqueue(p)).Methods("POST")
 	r.HandleFunc("/dequeue", dequeue(q)).Methods("GET")
-	s := &http.Server{Addr: fmt.Sprintf(":%d", *servicePort), Handler: r}
+	r.HandleFunc("/stats", stats(manager)).Methods("GET")
+	s := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: r}
 
 	shutdown := func() {
 		cancelFunc() // stop waiting for exit
 		s.Shutdown(context.Background())
 	}
-	go func() {
-		// there is no nice way of shutting this one down,
-		// but since its only for stats ¯\_(ツ)_/¯
-		workers.StartStatsServer(*statusPort)
-	}()
 	waitForExit(shutdown,
 		func() error {
-			log.Println("starting application on port", *servicePort)
+			log.Println("starting application on port", *port)
 			return s.ListenAndServe()
 		},
 		func() error {
