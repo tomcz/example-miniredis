@@ -124,13 +124,14 @@ func realMain() error {
 	defer mr.Close()
 
 	// ProcessID uniquely identifies this instance.
-	// How do we set that up in a multi-node environment
-	// like k8s where these things can go up & down???
+	// In an implementation that uses a real redis instance,
+	// and in a multi-node environment like k8s where these
+	// things can go up & down, how do we set that up???
 	// Maybe we can't and therefore lose all the in-process
 	// jobs and need something that will eventually re-queue
-	// any jobs that have not completed. That means that we
-	// need to keep track of this ourselves or peek into
-	// queues that have not been updated after some time.
+	// any jobs that have not completed. That means that we may
+	// need to keep track of the progress of the jobs ourselves,
+	// for example with checkpoints or status codes in a database.
 	manager, err := workers.NewManager(workers.Options{
 		ProcessID:  "1",
 		Namespace:  "example",
