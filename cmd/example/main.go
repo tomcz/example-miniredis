@@ -135,6 +135,7 @@ func realMain() error {
 	ctx := context.Background()
 	runAndWaitForExit(ctx,
 		func() {
+			log.Println("shutting down application")
 			s.Shutdown(ctx)
 		},
 		func() error {
