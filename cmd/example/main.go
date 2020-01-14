@@ -132,11 +132,11 @@ func realMain() error {
 	r.HandleFunc("/stats", stats(manager)).Methods("GET")
 	s := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: r}
 
-	ctx := context.Background()
-	runAndWaitForExit(ctx,
+	runAndWaitForExit(
 		func() {
 			log.Println("shutting down application")
-			s.Shutdown(ctx)
+			s.Shutdown(context.Background())
+			manager.Stop()
 		},
 		func() error {
 			log.Println("starting application on port", *port)
