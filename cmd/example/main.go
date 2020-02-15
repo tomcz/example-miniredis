@@ -136,6 +136,7 @@ func realMain() error {
 		func() {
 			log.Println("shutting down application")
 			s.Shutdown(context.Background())
+			// this can panic, so call last
 			manager.Stop()
 		},
 		func() error {
