@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -132,7 +133,7 @@ func realMain() error {
 	r.HandleFunc("/stats", stats(manager)).Methods("GET")
 	s := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: r}
 
-	runAndWaitForExit(
+	return runAndWaitForExit(
 		func() {
 			log.Println("shutting down application")
 			s.Shutdown(context.Background())
@@ -141,7 +142,12 @@ func realMain() error {
 		},
 		func() error {
 			log.Println("starting application on port", *port)
-			return s.ListenAndServe()
+			err := s.ListenAndServe()
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return fmt.Errorf("http server failed: %w", err)
+			}
+			log.Println("http server stopped")
+			return nil
 		},
 		func() error {
 			log.Println("starting workers")
@@ -150,5 +156,4 @@ func realMain() error {
 			return nil
 		},
 	)
-	return nil
 }
