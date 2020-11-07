@@ -39,7 +39,7 @@ func withCancel(shutdown func()) (context.Context, func()) {
 	return ctx, func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("panic during shutdown: %v", r)
+				log.Printf("shutdown panic: %v, stack %s\n", r, string(debug.Stack()))
 			}
 		}()
 		cancel()
