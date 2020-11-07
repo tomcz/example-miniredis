@@ -24,7 +24,6 @@ func runAndWaitForExit(shutdown func(), runList ...action) error {
 	run := func(idx int, item action) {
 		err := invoke(item)
 		if err != nil {
-			log.Println(err)
 			res.Store(idx, err)
 		}
 		once.Do(shutdown)
