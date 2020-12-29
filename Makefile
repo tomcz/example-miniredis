@@ -18,7 +18,7 @@ lint:
 	golint -set_exit_status ${PACKAGES}
 
 compile: target
-	GO111MODULE=on GOFLAGS='-mod=vendor' go build -o target/example ./cmd/example/...
+	go build -o target/example ./cmd/example/...
 
 run: compile
 	./target/example
