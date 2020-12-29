@@ -2,6 +2,8 @@
 
 all: clean format lint compile
 
+PACKAGES = $(shell go list ./... | grep -v /vendor/)
+
 target:
 	mkdir target
 
@@ -12,11 +14,11 @@ format:
 	goimports -w -local github.com/tomcz/example-miniredis .
 
 lint:
-	go vet ./...
-	golint -set_exit_status ./...
+	go vet ${PACKAGES}
+	golint -set_exit_status ${PACKAGES}
 
 compile: target
-	go build -o target/example ./cmd/example/...
+	GO111MODULE=on GOFLAGS='-mod=vendor' go build -o target/example ./cmd/example/...
 
 run: compile
 	./target/example

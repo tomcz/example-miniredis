@@ -36,7 +36,11 @@ func runAndWaitForExit(shutdown func(), runList ...action) error {
 	wg.Wait()
 	var err error
 	res.Range(func(key, value interface{}) bool {
-		err = multierror.Append(err, value.(error))
+		if err == nil {
+			err = value.(error)
+		} else {
+			err = multierror.Append(err, value.(error))
+		}
 		return true
 	})
 	return err
@@ -58,7 +62,7 @@ func withCancel(shutdown func()) (context.Context, func()) {
 func invoke(item action) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic: %v, stack: %s", r, string(debug.Stack()))
+			err = fmt.Errorf("invoke panic: %v, stack: %s", r, string(debug.Stack()))
 		}
 	}()
 	return item()

@@ -2,20 +2,21 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"github.com/alicebob/miniredis/v2"
 	workers "github.com/digitalocean/go-workers2"
 	"github.com/gorilla/mux"
 )
 
-var port = flag.Int("service", 3000, "service http port")
+var servicePort = flag.Int("service", 3000, "service http port")
+var statsPort = flag.Int("stats", 3001, "debug http port")
 
 type queue struct {
 	sync.Mutex
@@ -73,19 +74,6 @@ func dequeue(q *queue) http.HandlerFunc {
 	}
 }
 
-func stats(m *workers.Manager) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		stats, err := m.GetStats()
-		if err != nil {
-			log.Println("failed to get stats from manager:", err)
-			http.Error(w, "worker stats unavailable", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		json.NewEncoder(w).Encode(stats)
-	}
-}
-
 func workerJob(q *queue) workers.JobFunc {
 	return func(message *workers.Msg) error {
 		log.Println("processing message", message.Jid())
@@ -130,23 +118,37 @@ func realMain() error {
 	r := mux.NewRouter()
 	r.HandleFunc("/enqueue", enqueue(p)).Methods("POST")
 	r.HandleFunc("/dequeue", dequeue(q)).Methods("GET")
-	r.HandleFunc("/stats", stats(manager)).Methods("GET")
-	s := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: r}
+	s := &http.Server{Addr: fmt.Sprintf(":%d", *servicePort), Handler: r}
+
+	// go-workers2 manager listens for its own close signals
+	// so we should only stop it on fatal application errors
+	// and not on close signals otherwise we get a panic
+	// from the manager when it tries to close an already
+	// closed go channel in its scheduledWorker's quit fn.
+	var stopManager atomic.Value
+	stopManager.Store(false)
 
 	return runAndWaitForExit(
 		func() {
 			log.Println("shutting down application")
 			s.Shutdown(context.Background())
-			// this can panic, so call last
-			manager.Stop()
+			workers.StopAPIServer()
+			if stopManager.Load().(bool) {
+				manager.Stop()
+			}
 		},
 		func() error {
-			log.Println("starting application on port", *port)
+			log.Println("starting application on port", *servicePort)
 			err := s.ListenAndServe()
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				stopManager.Store(true) // fatal error, shut down workers
 				return fmt.Errorf("http server failed: %w", err)
 			}
 			log.Println("http server stopped")
+			return nil
+		},
+		func() error {
+			workers.StartAPIServer(*statsPort)
 			return nil
 		},
 		func() error {
