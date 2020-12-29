@@ -34,16 +34,16 @@ func runAndWaitForExit(shutdown func(), runList ...action) error {
 		go run(i, item)
 	}
 	wg.Wait()
-	var err error
+	var fail error
 	res.Range(func(key, value interface{}) bool {
-		if err == nil {
-			err = value.(error)
+		if fail == nil {
+			fail = value.(error)
 		} else {
-			err = multierror.Append(err, value.(error))
+			fail = multierror.Append(fail, value.(error))
 		}
 		return true
 	})
-	return err
+	return fail
 }
 
 func withCancel(shutdown func()) (context.Context, func()) {
