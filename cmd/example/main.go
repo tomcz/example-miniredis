@@ -16,7 +16,6 @@ import (
 )
 
 var servicePort = flag.Int("service", 3000, "service http port")
-var statsPort = flag.Int("stats", 3001, "debug http port")
 
 type queue struct {
 	sync.Mutex
@@ -118,6 +117,8 @@ func realMain() error {
 	r := mux.NewRouter()
 	r.HandleFunc("/enqueue", enqueue(p)).Methods("POST")
 	r.HandleFunc("/dequeue", dequeue(q)).Methods("GET")
+	r.PathPrefix("/workers").Handler(http.StripPrefix("/workers", workers.GlobalAPIHandler()))
+
 	s := &http.Server{Addr: fmt.Sprintf(":%d", *servicePort), Handler: r}
 
 	// go-workers2 manager listens for its own close signals
@@ -132,7 +133,6 @@ func realMain() error {
 		func() {
 			log.Println("shutting down application")
 			s.Shutdown(context.Background())
-			workers.StopAPIServer()
 			if stopManager.Load().(bool) {
 				manager.Stop()
 			}
@@ -145,10 +145,6 @@ func realMain() error {
 				return fmt.Errorf("http server failed: %w", err)
 			}
 			log.Println("http server stopped")
-			return nil
-		},
-		func() error {
-			workers.StartAPIServer(*statsPort)
 			return nil
 		},
 		func() error {
