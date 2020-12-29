@@ -62,7 +62,7 @@ func withCancel(shutdown func()) (context.Context, func()) {
 func invoke(item action) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("invoke panic: %v, stack: %s", r, string(debug.Stack()))
+			err = fmt.Errorf("action panic: %v, stack: %s", r, string(debug.Stack()))
 		}
 	}()
 	return item()
