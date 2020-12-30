@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -11,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/hashicorp/go-multierror"
+	log "github.com/sirupsen/logrus"
 )
 
 type action func() error
@@ -51,7 +51,8 @@ func withCancel(shutdown func()) (context.Context, func()) {
 	return ctx, func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("shutdown panic: %v, stack: %s\n", r, string(debug.Stack()))
+				stack := string(debug.Stack())
+				log.WithField("panic", r).WithField("stack", stack).Error("shutdown panic")
 			}
 		}()
 		cancel()
@@ -62,7 +63,8 @@ func withCancel(shutdown func()) (context.Context, func()) {
 func invoke(item action) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("action panic: %v, stack: %s", r, string(debug.Stack()))
+			stack := string(debug.Stack())
+			err = fmt.Errorf("action panic: %v, stack: %s", r, stack)
 		}
 	}()
 	return item()
@@ -79,7 +81,7 @@ func waitForSignal(ctx context.Context) error {
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case <-signalChan:
-		log.Println("shutdown received")
+		log.Info("shutdown received")
 		return nil
 	case <-ctx.Done():
 		return nil

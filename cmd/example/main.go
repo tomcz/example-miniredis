@@ -5,7 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
+	logger "log"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -13,9 +13,10 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	workers "github.com/digitalocean/go-workers2"
 	"github.com/gorilla/mux"
+	log "github.com/sirupsen/logrus"
 )
 
-var servicePort = flag.Int("service", 3000, "service http port")
+var port = flag.Int("port", 3000, "service http port")
 
 type queue struct {
 	sync.Mutex
@@ -49,7 +50,7 @@ func enqueue(p *workers.Producer) http.HandlerFunc {
 		}
 		jobID, err := p.Enqueue("helloQueue", "Add", key)
 		if err != nil {
-			log.Println("enqueue failed with", err)
+			log.WithError(err).Error("enqueue failed")
 			http.Error(w, "enqueue failed", http.StatusInternalServerError)
 			return
 		}
@@ -75,10 +76,10 @@ func dequeue(q *queue) http.HandlerFunc {
 
 func workerJob(q *queue) workers.JobFunc {
 	return func(message *workers.Msg) error {
-		log.Println("processing message", message.Jid())
+		log.Info("processing message ", message.Jid())
 		key, err := message.Args().String()
 		if err != nil {
-			log.Println("cannot get args from message:", err)
+			log.WithError(err).Error("cannot get args from message")
 			return nil
 		}
 		q.enqueue(key, fmt.Sprintf("hello from job %s", message.Jid()))
@@ -89,9 +90,9 @@ func workerJob(q *queue) workers.JobFunc {
 func main() {
 	flag.Parse()
 	if err := realMain(); err != nil {
-		log.Fatalln("application failed:", err)
+		log.WithError(err).Fatal("application failed")
 	}
-	log.Println("application stopped")
+	log.Info("application stopped")
 }
 
 func realMain() error {
@@ -102,6 +103,11 @@ func realMain() error {
 		return fmt.Errorf("failed to start miniredis: %w", err)
 	}
 	defer mr.Close()
+
+	// replace go-workers2 default logger with a structured logger
+	ww := log.New().WithField("component", "workers").Writer()
+	defer ww.Close()
+	workers.Logger = logger.New(ww, "", 0)
 
 	manager, err := workers.NewManager(workers.Options{
 		ProcessID:  "1",
@@ -122,7 +128,7 @@ func realMain() error {
 	workers.RegisterAPIEndpoints(workerAPI)
 	r.PathPrefix("/workers").Handler(http.StripPrefix("/workers", workerAPI))
 
-	s := &http.Server{Addr: fmt.Sprintf(":%d", *servicePort), Handler: r}
+	s := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: r}
 
 	// go-workers2 manager listens for its own close signals
 	// so we should only stop it on fatal application errors
@@ -134,26 +140,26 @@ func realMain() error {
 
 	return runAndWaitForExit(
 		func() {
-			log.Println("shutting down application")
+			log.Info("shutting down application")
 			s.Shutdown(context.Background())
 			if stopManager.Load().(bool) {
 				manager.Stop()
 			}
 		},
 		func() error {
-			log.Println("starting application on port", *servicePort)
+			log.Info("starting application on port ", *port)
 			err := s.ListenAndServe()
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				stopManager.Store(true) // fatal error, shut down workers
 				return fmt.Errorf("http server failed: %w", err)
 			}
-			log.Println("http server stopped")
+			log.Info("http server stopped")
 			return nil
 		},
 		func() error {
-			log.Println("starting workers")
+			log.Info("starting workers")
 			manager.Run() // blocks waiting for exit signal
-			log.Println("workers stopped")
+			log.Info("workers stopped")
 			return nil
 		},
 	)
