@@ -14,6 +14,8 @@ This standalone mode is inspired by the `-dev` option of [HashiCorp's Vault](htt
 
     Maybe we can't and therefore we will lose all the in-progress jobs during a restart, redeploy or a pod move. It may mean that we should keep track of the progress of the jobs ourselves, for example with checkpoints or status codes in a database, and a periodic reconciliation to make sure any abandoned jobs are restarted.
 
+    Alternatively, we use a constant value for this and then all worker nodes will attempt to re-schedule the same in-progress jobs. I guess that's ok, since Sidekiq itself only provides a guarantee that a job will run at least once, not that it will only run once, meaning the same idempotency controls we need in Sidekiq are also important in go-workers2.
+
     We can also decide that we will not be running more than one worker node at a time, and then we don't need to worry about the ProcessID. We may still need to ensure that there is truly only one node. For example when an old one is being shut down, the new one should not be trying to process anything. This could be done with leadership election or a lock, and that is something we can also use redis for (see: https://redis.io/topics/distlock).
 
     One point to note here is that all things eventually fail, and redis may fail in a spectacular way to the point we cannot recover any in-progress jobs. Therefore keeping track of them ourselves and being able to recover any incomplete ones is something we should do irrespective of whether we we run multiple nodes or a single one.
