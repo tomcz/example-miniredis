@@ -9,4 +9,4 @@ require (
 	github.com/hashicorp/go-multierror v1.1.0
 )
 
-replace github.com/digitalocean/go-workers2 v0.9.3 => github.com/tomcz/go-workers2 v0.9.4-0.20201229055824-50c3b22f57c5
+replace github.com/digitalocean/go-workers2 v0.9.3 => github.com/tomcz/go-workers2 v0.9.4-0.20201230054137-d1e18e2ded32

@@ -117,7 +117,10 @@ func realMain() error {
 	r := mux.NewRouter()
 	r.HandleFunc("/enqueue", enqueue(p)).Methods("POST")
 	r.HandleFunc("/dequeue", dequeue(q)).Methods("GET")
-	r.PathPrefix("/workers").Handler(http.StripPrefix("/workers", workers.GlobalAPIHandler()))
+
+	workerAPI := http.NewServeMux()
+	workers.RegisterAPIEndpoints(workerAPI)
+	r.PathPrefix("/workers").Handler(http.StripPrefix("/workers", workerAPI))
 
 	s := &http.Server{Addr: fmt.Sprintf(":%d", *servicePort), Handler: r}
 
