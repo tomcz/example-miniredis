@@ -105,7 +105,8 @@ func realMain() error {
 	defer mr.Close()
 
 	// replace go-workers2 default logger with a structured logger
-	ww := log.New().WithField("component", "workers").Writer()
+	// see https://github.com/Sirupsen/logrus#logger-as-an-iowriter
+	ww := log.WithField("component", "workers").Writer()
 	defer ww.Close()
 	workers.Logger = logger.New(ww, "", 0)
 
