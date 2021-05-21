@@ -21,4 +21,12 @@ compile: target
 	go build -o target/example ./cmd/example/...
 
 run: compile
-	./target/example
+	ENV="dev" ./target/example
+
+HELLO ?= Bob
+
+enqueue:
+	curl -s -X POST 'http://localhost:3000/enqueue?key=${HELLO}'
+
+dequeue:
+	curl -s 'http://localhost:3000/dequeue?key=${HELLO}'
