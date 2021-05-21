@@ -8,12 +8,12 @@ import (
 	logger "log"
 	"net/http"
 	"sync"
-	"sync/atomic"
 
 	"github.com/alicebob/miniredis/v2"
 	workers "github.com/digitalocean/go-workers2"
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 var port = flag.Int("port", 3000, "service http port")
@@ -131,37 +131,23 @@ func realMain() error {
 
 	s := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: r}
 
-	// go-workers2 manager listens for its own close signals
-	// so we should only stop it on fatal application errors
-	// and not on close signals otherwise we get a panic
-	// from the manager when it tries to close an already
-	// closed go channel in its scheduledWorker's quit fn.
-	var stopManager atomic.Value
-	stopManager.Store(false)
-
-	return runAndWaitForExit(
-		func() {
-			log.Info("shutting down application")
-			s.Shutdown(context.Background())
-			if stopManager.Load().(bool) {
-				manager.Stop()
-			}
-		},
-		func() error {
-			log.Info("starting application on port ", *port)
-			err := s.ListenAndServe()
-			if err != nil && !errors.Is(err, http.ErrServerClosed) {
-				stopManager.Store(true) // fatal error, shut down workers
-				return fmt.Errorf("http server failed: %w", err)
-			}
+	var group errgroup.Group
+	group.Go(func() error {
+		log.Info("starting application on port ", *port)
+		err := s.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
 			log.Info("http server stopped")
 			return nil
-		},
-		func() error {
-			log.Info("starting workers")
-			manager.Run() // blocks waiting for exit signal
-			log.Info("workers stopped")
-			return nil
-		},
-	)
+		}
+		manager.Stop()
+		return err
+	})
+	group.Go(func() error {
+		log.Info("starting workers")
+		manager.Run() // blocks waiting for exit signal
+		log.Info("workers stopped")
+		s.Shutdown(context.Background())
+		return nil
+	})
+	return group.Wait()
 }
