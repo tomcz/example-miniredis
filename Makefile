@@ -30,3 +30,9 @@ enqueue:
 
 dequeue:
 	curl -s 'http://localhost:3000/dequeue?key=${HELLO}'
+
+show-stats:
+	curl -s 'http://localhost:3000/workers/stats'
+
+show-retries:
+	curl -s 'http://localhost:3000/workers/retries'
