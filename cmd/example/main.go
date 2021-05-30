@@ -11,7 +11,6 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	workers "github.com/digitalocean/go-workers2"
-	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
@@ -35,8 +34,6 @@ func main() {
 }
 
 func realMain() error {
-	q := &queue{data: make(map[string]string)}
-
 	mr, err := miniredis.Run()
 	if err != nil {
 		return fmt.Errorf("failed to start miniredis: %w", err)
@@ -49,6 +46,8 @@ func realMain() error {
 	defer ww.Close()
 	workers.Logger = golog.New(ww, "", 0)
 
+	store := &dataStore{data: make(map[string]string)}
+
 	manager, err := workers.NewManager(workers.Options{
 		ProcessID:  "1",
 		Namespace:  "example",
@@ -57,23 +56,18 @@ func realMain() error {
 	if err != nil {
 		return fmt.Errorf("failed to create worker manager: %w", err)
 	}
-	manager.AddWorker("helloQueue", 2, workerJob(q))
-	p := manager.Producer()
+	registerWorker(store, manager)
+	producer := manager.Producer()
 
-	r := mux.NewRouter()
-	r.HandleFunc("/enqueue", enqueue(p)).Methods("POST")
-	r.HandleFunc("/dequeue", dequeue(q)).Methods("GET")
-
-	workerAPI := http.NewServeMux()
-	workers.RegisterAPIEndpoints(workerAPI)
-	r.PathPrefix("/workers").Handler(http.StripPrefix("/workers", workerAPI))
-
-	s := &http.Server{Addr: fmt.Sprintf(":%d", *port), Handler: r}
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", *port),
+		Handler: createHandler(store, producer),
+	}
 
 	var group errgroup.Group
 	group.Go(func() error {
 		log.Info("starting application on port ", *port)
-		err := s.ListenAndServe()
+		err := server.ListenAndServe()
 		if errors.Is(err, http.ErrServerClosed) {
 			log.Info("http server stopped")
 			return nil
@@ -85,7 +79,7 @@ func realMain() error {
 		log.Info("starting workers")
 		manager.Run() // blocks waiting for exit signal
 		log.Info("workers stopped")
-		s.Shutdown(context.Background())
+		server.Shutdown(context.Background())
 		return nil
 	})
 	return group.Wait()

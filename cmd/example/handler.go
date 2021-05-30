@@ -6,30 +6,62 @@ import (
 	"sync"
 
 	workers "github.com/digitalocean/go-workers2"
+	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 )
 
-type queue struct {
+const queueName = "helloQueue"
+
+type dataStore struct {
 	sync.Mutex
 	data map[string]string
 }
 
-func (q *queue) enqueue(key, value string) {
-	q.Lock()
-	defer q.Unlock()
-
-	q.data[key] = value
+func (s *dataStore) put(key, value string) {
+	s.Lock()
+	s.data[key] = value
+	s.Unlock()
 }
 
-func (q *queue) dequeue(key string) (string, bool) {
-	q.Lock()
-	defer q.Unlock()
+func (s *dataStore) pop(key string) (string, bool) {
+	s.Lock()
+	defer s.Unlock()
 
-	if value, ok := q.data[key]; ok {
-		delete(q.data, key)
+	if value, ok := s.data[key]; ok {
+		delete(s.data, key)
 		return value, ok
 	}
 	return "", false
+}
+
+func registerWorker(s *dataStore, m *workers.Manager) {
+	m.AddWorker(queueName, 2, workerJob(s))
+}
+
+func workerJob(s *dataStore) workers.JobFunc {
+	return func(message *workers.Msg) error {
+		log.Info("processing message ", message.Jid())
+		key, err := message.Args().String()
+		if err != nil {
+			log.WithError(err).Error("cannot get args from message")
+			return nil
+		}
+		s.put(key, fmt.Sprintf("hello from job %s", message.Jid()))
+		return nil
+	}
+}
+
+func createHandler(s *dataStore, p *workers.Producer) http.Handler {
+	r := mux.NewRouter()
+
+	r.HandleFunc("/enqueue", enqueue(p)).Methods("POST")
+	r.HandleFunc("/dequeue", dequeue(s)).Methods("GET")
+
+	workerAPI := http.NewServeMux()
+	workers.RegisterAPIEndpoints(workerAPI)
+	r.PathPrefix("/workers").Handler(http.StripPrefix("/workers", workerAPI))
+
+	return r
 }
 
 func enqueue(p *workers.Producer) http.HandlerFunc {
@@ -39,7 +71,7 @@ func enqueue(p *workers.Producer) http.HandlerFunc {
 			http.Error(w, "no key", http.StatusBadRequest)
 			return
 		}
-		jobID, err := p.Enqueue("helloQueue", "Add", key)
+		jobID, err := p.Enqueue(queueName, "Add", key)
 		if err != nil {
 			log.WithError(err).Error("enqueue failed")
 			http.Error(w, "enqueue failed", http.StatusInternalServerError)
@@ -50,30 +82,17 @@ func enqueue(p *workers.Producer) http.HandlerFunc {
 	}
 }
 
-func dequeue(q *queue) http.HandlerFunc {
+func dequeue(s *dataStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Query().Get("key")
 		if key == "" {
 			http.Error(w, "no key", http.StatusBadRequest)
 			return
 		}
-		if value, ok := q.dequeue(key); ok {
+		if value, ok := s.pop(key); ok {
 			http.Error(w, value, http.StatusOK)
 			return
 		}
 		http.Error(w, "no answer for you", http.StatusNotFound)
-	}
-}
-
-func workerJob(q *queue) workers.JobFunc {
-	return func(message *workers.Msg) error {
-		log.Info("processing message ", message.Jid())
-		key, err := message.Args().String()
-		if err != nil {
-			log.WithError(err).Error("cannot get args from message")
-			return nil
-		}
-		q.enqueue(key, fmt.Sprintf("hello from job %s", message.Jid()))
-		return nil
 	}
 }
