@@ -2,8 +2,6 @@
 
 all: clean format lint compile
 
-PACKAGES = $(shell go list ./... | grep -v /vendor/)
-
 target:
 	mkdir target
 
@@ -11,11 +9,16 @@ clean:
 	rm -rf target
 
 format:
+ifeq (, $(shell which goimports))
+	go install golang.org/x/tools/cmd/goimports
+endif
 	goimports -w -local github.com/tomcz/example-miniredis .
 
 lint:
-	go vet ${PACKAGES}
-	golint -set_exit_status ${PACKAGES}
+ifeq (, $(shell which staticcheck))
+	go install honnef.co/go/tools/cmd/staticcheck@2021.1
+endif
+	staticcheck ./...
 
 compile: target
 	go build -o target/example ./cmd/example/...
