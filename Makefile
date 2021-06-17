@@ -10,7 +10,7 @@ clean:
 
 format:
 ifeq (, $(shell which goimports))
-	go install golang.org/x/tools/cmd/goimports
+	go get golang.org/x/tools/cmd/goimports
 endif
 	goimports -w -local github.com/tomcz/example-miniredis .
 
