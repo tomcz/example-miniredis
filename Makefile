@@ -9,16 +9,10 @@ clean:
 	rm -rf target
 
 format:
-ifeq (, $(shell which goimports))
-	go get golang.org/x/tools/cmd/goimports
-endif
 	goimports -w -local github.com/tomcz/example-miniredis .
 
 lint:
-ifeq (, $(shell which staticcheck))
-	go install honnef.co/go/tools/cmd/staticcheck@2021.1
-endif
-	staticcheck ./...
+	golangci-lint run
 
 compile: target
 	go build -o target/example ./cmd/example/...

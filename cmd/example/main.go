@@ -67,19 +67,19 @@ func realMain() error {
 	var group errgroup.Group
 	group.Go(func() error {
 		log.Info("starting application on port ", *port)
-		err := server.ListenAndServe()
-		if errors.Is(err, http.ErrServerClosed) {
+		serr := server.ListenAndServe()
+		if errors.Is(serr, http.ErrServerClosed) {
 			log.Info("http server stopped")
 			return nil
 		}
 		manager.Stop()
-		return err
+		return serr
 	})
 	group.Go(func() error {
 		log.Info("starting workers")
 		manager.Run() // blocks waiting for exit signal
 		log.Info("workers stopped")
-		server.Shutdown(context.Background())
+		server.Shutdown(context.Background()) //nolint:errcheck
 		return nil
 	})
 	return group.Wait()
