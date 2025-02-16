@@ -8,6 +8,9 @@ import (
 	golog "log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	workers "github.com/digitalocean/go-workers2"
@@ -16,10 +19,10 @@ import (
 )
 
 func init() {
-	if os.Getenv("ENV") == "dev" {
-		log.SetFormatter(&log.TextFormatter{})
-	} else {
+	if os.Getenv("ENV") == "production" {
 		log.SetFormatter(&log.JSONFormatter{})
+	} else {
+		log.SetFormatter(&log.TextFormatter{})
 	}
 }
 
@@ -40,14 +43,14 @@ func realMain() error {
 	}
 	defer mr.Close()
 
+	store := &dataStore{data: make(map[string]string)}
+
 	// replace go-workers2 default logger with a structured logger
 	// see https://github.com/Sirupsen/logrus#logger-as-an-iowriter
 	ww := log.WithField("component", "workers").Writer()
 	defer ww.Close()
+
 	workers.Logger = golog.New(ww, "", 0)
-
-	store := &dataStore{data: make(map[string]string)}
-
 	manager, err := workers.NewManager(workers.Options{
 		ProcessID:  "1",
 		Namespace:  "example",
@@ -64,23 +67,53 @@ func realMain() error {
 		Handler: createHandler(store, producer),
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	var group errgroup.Group
 	group.Go(func() error {
-		log.Info("starting application on port ", *port)
-		serr := server.ListenAndServe()
-		if errors.Is(serr, http.ErrServerClosed) {
-			log.Info("http server stopped")
-			return nil
-		}
-		manager.Stop()
-		return serr
+		defer cancel()
+		log.Info("starting server on port ", *port)
+		return server.ListenAndServe()
 	})
 	group.Go(func() error {
-		log.Info("starting workers")
-		manager.Run() // blocks waiting for exit signal
-		log.Info("workers stopped")
-		server.Shutdown(context.Background()) //nolint:errcheck
+		defer cancel()
+		log.Info("starting manager")
+		manager.Run()
 		return nil
 	})
-	return group.Wait()
+	group.Go(func() error {
+		<-ctx.Done()
+		log.Info("stopping server")
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer waitCancel()
+		return server.Shutdown(waitCtx)
+	})
+	group.Go(func() error {
+		defer func() {
+			// manager.Stop can panic
+			_ = recover()
+		}()
+		<-ctx.Done()
+		log.Info("stopping manager")
+		manager.Stop()
+		return nil
+	})
+	group.Go(func() error {
+		signalChan := make(chan os.Signal, 1)
+		signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+		select {
+		case <-signalChan:
+			log.Info("shutting down")
+			cancel() // errored out above
+			return nil
+		case <-ctx.Done():
+			log.Info("errored out")
+			return nil
+		}
+	})
+	err = group.Wait()
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil // expected
+	}
+	return err
 }
