@@ -104,7 +104,7 @@ func realMain() error {
 		select {
 		case <-signalChan:
 			log.Info("shutting down")
-			cancel() // errored out above
+			cancel()
 			return nil
 		case <-ctx.Done():
 			log.Info("errored out")
